@@ -113,6 +113,25 @@ python3 scripts/evolve.py link <memory_id_1> <memory_id_2> --relation "因果"
 
 建立记忆之间的关联，形成知识图谱。
 
+### 6. 后台常驻 (Daemon)
+
+启动（后台）：
+```bash
+python3 scripts/dna_memory_daemon.py start
+```
+
+查看状态：
+```bash
+python3 scripts/dna_memory_daemon.py status
+```
+
+停止：
+```bash
+python3 scripts/dna_memory_daemon.py stop
+```
+
+默认每 15 分钟自动 `reflect`，每 1 小时自动 `decay`，日志写入 `/tmp/dna-memory-daemon.log`。
+
 ---
 
 ## 自动触发
@@ -129,6 +148,14 @@ python3 scripts/evolve.py link <memory_id_1> <memory_id_2> --relation "因果"
 ### 每日自动
 1. 执行遗忘机制
 2. 检查是否需要归纳新模式
+
+默认节流：
+- `auto_reflect_interval_minutes=30`：自动反思最短间隔 30 分钟，避免高频重复归纳。
+- `auto_decay_interval_hours=24`：自动遗忘最短间隔 24 小时。
+
+### 并发安全
+- `evolve.py` 已内置跨进程文件锁，支持前台命令与后台守护同时运行。
+- JSON 写入采用原子替换，降低中断/并发导致的数据损坏风险。
 
 ---
 

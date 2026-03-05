@@ -12,16 +12,23 @@ DNA Memory - 进化式记忆系统
 
 import json
 import os
-import sys
+import tempfile
+import time
 import uuid
 import argparse
-from datetime import datetime, timedelta
+from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Dict, Optional
+
+try:
+    import fcntl
+except ImportError:  # pragma: no cover
+    fcntl = None
 
 # 路径配置
 SKILL_DIR = Path(__file__).parent.parent
-MEMORY_DIR = Path.home() / ".openclaw" / "workspace" / "memory"
+MEMORY_DIR = Path(os.environ.get("DNA_MEMORY_DIR", str(Path.home() / ".openclaw" / "workspace" / "memory"))).expanduser()
 CONFIG_FILE = SKILL_DIR / "assets" / "config.json"
 
 SHORT_TERM_FILE = MEMORY_DIR / "short_term.json"
@@ -29,6 +36,7 @@ LONG_TERM_FILE = MEMORY_DIR / "long_term.json"
 PATTERNS_FILE = MEMORY_DIR / "patterns.md"
 GRAPH_FILE = MEMORY_DIR / "graph.json"
 META_FILE = MEMORY_DIR / "meta.json"
+LOCK_FILE = MEMORY_DIR / ".dna-memory.lock"
 
 MEMORY_TYPES = ["fact", "preference", "skill", "error", "pattern", "insight"]
 
@@ -41,7 +49,9 @@ DEFAULT_CONFIG = {
     "max_short_term": 100,
     "max_long_term": 500,
     "auto_reflect": True,
-    "auto_decay": True
+    "auto_reflect_interval_minutes": 30,
+    "auto_decay": True,
+    "auto_decay_interval_hours": 24
 }
 
 
@@ -62,22 +72,63 @@ def ensure_dirs():
     MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
 
+@contextmanager
+def memory_lock(timeout: float = 10.0, poll_interval: float = 0.05):
+    """跨进程文件锁，避免前后台并发写坏 JSON"""
+    ensure_dirs()
+    lock_handle = open(LOCK_FILE, "a+", encoding="utf-8")
+
+    if fcntl is None:
+        try:
+            yield
+        finally:
+            lock_handle.close()
+        return
+
+    start = time.monotonic()
+    while True:
+        try:
+            fcntl.flock(lock_handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except BlockingIOError:
+            if time.monotonic() - start >= timeout:
+                lock_handle.close()
+                raise TimeoutError("DNA memory lock timeout")
+            time.sleep(poll_interval)
+
+    try:
+        yield
+    finally:
+        fcntl.flock(lock_handle.fileno(), fcntl.LOCK_UN)
+        lock_handle.close()
+
+
 def load_json(path: Path) -> Dict:
     """加载 JSON 文件"""
     if path.exists():
         try:
             with open(path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except:
+                data = json.load(f)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
             return {"memories": []}
     return {"memories": []}
 
 
 def save_json(path: Path, data: Dict):
-    """保存 JSON 文件"""
+    """原子保存 JSON 文件"""
     ensure_dirs()
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    fd, temp_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
 
 
 def gen_id() -> str:
@@ -90,7 +141,7 @@ def now_iso() -> str:
     return datetime.now().isoformat()
 
 
-def update_meta(action: str, count: int = 1):
+def update_meta(action: str, count: int = 1, extra: Optional[Dict] = None):
     """更新元数据统计"""
     meta = load_json(META_FILE)
     if "stats" not in meta:
@@ -100,14 +151,62 @@ def update_meta(action: str, count: int = 1):
     meta["stats"][action] += count
     meta["last_action"] = action
     meta["last_updated"] = now_iso()
+    if extra:
+        meta.update(extra)
     save_json(META_FILE, meta)
+
+
+def should_run_auto_decay(config: Dict) -> bool:
+    """判断是否应触发自动衰减"""
+    if not config.get("auto_decay", True):
+        return False
+
+    interval_hours = float(config.get("auto_decay_interval_hours", 24))
+    if interval_hours <= 0:
+        return True
+
+    meta = load_json(META_FILE)
+    last_decay_at = meta.get("last_decay_at")
+    if not last_decay_at:
+        return True
+
+    try:
+        last = datetime.fromisoformat(last_decay_at)
+        return (datetime.now() - last).total_seconds() >= interval_hours * 3600
+    except Exception:
+        return True
+
+
+def should_run_auto_reflect(config: Dict) -> bool:
+    """判断是否应触发自动反思"""
+    if not config.get("auto_reflect", True):
+        return False
+
+    interval_minutes = float(config.get("auto_reflect_interval_minutes", 30))
+    if interval_minutes <= 0:
+        return True
+
+    meta = load_json(META_FILE)
+    last_reflect_at = meta.get("last_reflect_at")
+    if not last_reflect_at:
+        return True
+
+    try:
+        last = datetime.fromisoformat(last_reflect_at)
+        return (datetime.now() - last).total_seconds() >= interval_minutes * 60
+    except Exception:
+        return True
 
 
 def check_auto_actions(config: Dict):
     """检查是否需要自动执行反思或遗忘"""
+    if should_run_auto_decay(config):
+        print("🧹 自动触发遗忘...")
+        _do_decay(config)
+
     if config.get("auto_reflect"):
         st = load_json(SHORT_TERM_FILE)
-        if len(st.get("memories", [])) >= config.get("reflect_trigger", 20):
+        if len(st.get("memories", [])) >= config.get("reflect_trigger", 20) and should_run_auto_reflect(config):
             print("💭 自动触发反思...")
             _do_reflect(config)
 
@@ -154,6 +253,7 @@ def cmd_recall(args):
     
     for file in [SHORT_TERM_FILE, LONG_TERM_FILE]:
         data = load_json(file)
+        touched = False
         for mem in data.get("memories", []):
             content = mem.get("content", "").lower()
             tags = " ".join(mem.get("tags", [])).lower()
@@ -164,7 +264,9 @@ def cmd_recall(args):
                 mem["access_count"] = mem.get("access_count", 0) + 1
                 mem["importance"] = min(mem.get("importance", 0.5) + 0.1, 1.0)
                 results.append((mem, file))
-        save_json(file, data)
+                touched = True
+        if touched:
+            save_json(file, data)
     
     # 按重要性排序
     results.sort(key=lambda x: x[0].get("importance", 0), reverse=True)
@@ -246,10 +348,11 @@ def _do_reflect(config: Dict):
         
         save_json(LONG_TERM_FILE, lt)
         print(f"💡 归纳出 {len(patterns)} 个模式，升级 {len(promoted)} 条到长期记忆")
-        update_meta("reflect", len(patterns))
+        update_meta("reflect", len(patterns), {"last_reflect_at": now_iso()})
         return len(patterns)
     else:
         print("📝 暂未发现新模式")
+        update_meta("reflect", 0, {"last_reflect_at": now_iso()})
         return 0
 
 
@@ -262,6 +365,11 @@ def cmd_reflect(args):
 def cmd_decay(args):
     """遗忘衰减"""
     config = load_config()
+    _do_decay(config)
+
+
+def _do_decay(config: Dict) -> int:
+    """执行遗忘衰减并返回遗忘数量"""
     data = load_json(SHORT_TERM_FILE)
     now = datetime.now()
     kept, forgotten = [], []
@@ -286,8 +394,9 @@ def cmd_decay(args):
     
     data["memories"] = kept
     save_json(SHORT_TERM_FILE, data)
-    update_meta("decay", len(forgotten))
+    update_meta("decay", len(forgotten), {"last_decay_at": now_iso()})
     print(f"🧹 遗忘 {len(forgotten)} 条，保留 {len(kept)} 条")
+    return len(forgotten)
 
 
 def cmd_link(args):
@@ -461,7 +570,8 @@ def main():
     
     args = parser.parse_args()
     if hasattr(args, "func"):
-        args.func(args)
+        with memory_lock():
+            args.func(args)
     else:
         parser.print_help()
 

@@ -7,5 +7,7 @@
   "max_long_term": 500,
   "embedding_model": "text-embedding-3-small",
   "auto_reflect": true,
-  "auto_decay": true
+  "auto_reflect_interval_minutes": 30,
+  "auto_decay": true,
+  "auto_decay_interval_hours": 24
 }
