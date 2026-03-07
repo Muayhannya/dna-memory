@@ -130,7 +130,12 @@ python3 scripts/dna_memory_daemon.py status
 python3 scripts/dna_memory_daemon.py stop
 ```
 
-默认每 15 分钟自动 `reflect`，每 1 小时自动 `decay`，日志写入 `/tmp/dna-memory-daemon.log`。
+默认读取 `assets/config.json` 的节流参数：
+- `auto_reflect_interval_minutes`（默认 30 分钟）
+- `auto_decay_interval_hours`（默认 24 小时）
+
+并且仅在有新的 `remember` 写入后才执行 `reflect`，避免重复归纳同一批记忆。
+日志写入 `/tmp/dna-memory-daemon.log`。
 
 ---
 
